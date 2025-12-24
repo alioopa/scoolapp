@@ -14,7 +14,7 @@ const firebaseConfig = {
 };
 
 // التحقق مما إذا تم إعداد Firebase بشكل صحيح أم لا تزال القيم الافتراضية
-export const isFirebaseConfigured = firebaseConfig.projectId !== "your-project-id";
+export const isFirebaseConfigured = firebaseConfig.projectId !== "scoolali-41f04";
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
