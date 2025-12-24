@@ -35,6 +35,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ material, onBack, subjectI
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<any>(null);
   const renderRequestId = useRef<number>(0);
+  const pdfObjectUrl = useRef<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -74,9 +75,27 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ material, onBack, subjectI
             cMapPacked: true,
         };
 
-        // تحسين التعامل مع ملفات Base64 (التي تم رفعها محلياً)
-        // تحويلها إلى بيانات ثنائية لتجنب مشاكل طول الرابط
-        if (material.url.startsWith('data:')) {
+        // --- معالجة الروابط لتحسين الأداء وتجاوز مشاكل CORS ---
+        let urlToLoad = material.url;
+
+        // 1. إذا كان رابط مباشر (Firebase)، نحاول جلبه كـ Blob أولاً
+        // هذا يساعد في التعامل مع الملفات الكبيرة والتحويلات
+        if (material.url.startsWith('http')) {
+            try {
+                const response = await fetch(material.url);
+                if (!response.ok) throw new Error("فشل تحميل الملف من السيرفر");
+                const blob = await response.blob();
+                // إنشاء رابط محلي مؤقت
+                urlToLoad = URL.createObjectURL(blob);
+                pdfObjectUrl.current = urlToLoad;
+            } catch (fetchErr) {
+                console.error("Fetch failed, trying direct URL fallback", fetchErr);
+                // إذا فشل الـ Fetch (بسبب CORS مثلاً)، نستخدم الرابط المباشر كمحاولة أخيرة
+                urlToLoad = material.url;
+            }
+        } 
+        // 2. إذا كان Base64 (رفع محلي)
+        else if (material.url.startsWith('data:')) {
             try {
                 const base64 = material.url.split(',')[1];
                 const binaryString = atob(base64);
@@ -86,12 +105,14 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ material, onBack, subjectI
                     bytes[i] = binaryString.charCodeAt(i);
                 }
                 loadingParams.data = bytes;
+                urlToLoad = ''; // No URL needed if data is provided
             } catch (decodeErr) {
-                console.warn("Manual base64 decode failed, falling back to URL", decodeErr);
-                loadingParams.url = material.url;
+                console.warn("Manual base64 decode failed", decodeErr);
             }
-        } else {
-            loadingParams.url = material.url;
+        }
+
+        if (urlToLoad) {
+            loadingParams.url = urlToLoad;
         }
 
         const loadingTask = lib.getDocument(loadingParams);
@@ -104,12 +125,11 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ material, onBack, subjectI
         const savedPage = getBookmark(material.id);
         setCurrentPage(savedPage > 0 ? savedPage : 1);
 
-        // تعيين الحجم الافتراضي (Fit Width)
+        // تعيين الحجم الافتراضي
         try {
             const firstPage = await pdf.getPage(1);
             const containerWidth = window.innerWidth > 0 ? window.innerWidth : 375;
             const viewport = firstPage.getViewport({ scale: 1 });
-            // نضيف قليلاً من التكبير لضمان الوضوح عند البدء
             const initialScale = (containerWidth / viewport.width) * 1.0; 
             setScale(initialScale);
             currentScaleRef.current = initialScale;
@@ -121,25 +141,34 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ material, onBack, subjectI
       } catch (err: any) {
         if (active) {
           console.error("PDF Load Error:", err);
-          setError("عذراً، فشل فتح الكتاب. قد يكون الملف تالفاً أو كبيراً جداً للمعاينة المحلية.");
+          let errorMsg = "عذراً، فشل فتح الكتاب.";
+          if (err.name === 'MissingPDFException') errorMsg = "ملف الكتاب مفقود.";
+          if (err.name === 'InvalidPDFException') errorMsg = "ملف الكتاب تالف.";
+          if (err.message?.includes('Network')) errorMsg = "مشكلة في الاتصال، تأكد من الإنترنت.";
+          
+          setError(errorMsg + " (تأكد من إعدادات CORS في Firebase)");
           setLoading(false);
         }
       }
     };
 
     loadPdf();
-    return () => { active = false; };
+    return () => { 
+        active = false;
+        // تنظيف الرابط المؤقت لتوفير الذاكرة
+        if (pdfObjectUrl.current) {
+            URL.revokeObjectURL(pdfObjectUrl.current);
+        }
+    };
   }, [material.url, material.id]);
 
   const renderPage = useCallback(async (pageNum: number) => {
     if (!pdfDoc || !canvasRef.current) return;
     
-    // Increment request ID to invalidate previous renders pending async operations
     renderRequestId.current += 1;
     const requestId = renderRequestId.current;
 
     try {
-      // Cancel active render task if any
       if (renderTaskRef.current) {
         renderTaskRef.current.cancel();
         renderTaskRef.current = null;
@@ -147,12 +176,8 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ material, onBack, subjectI
       
       const page = await pdfDoc.getPage(pageNum);
       
-      // Check if this render request is still the latest one
-      if (renderRequestId.current !== requestId) {
-        return;
-      }
+      if (renderRequestId.current !== requestId) return;
       
-      // نستخدم مقياس ثابت عالي الجودة للرسم (Rendering) لمنع البكسلة عند التكبير
       const renderScale = scale < 1.5 ? 1.5 : scale; 
       const dpr = window.devicePixelRatio || 1;
       const viewport = page.getViewport({ scale: renderScale * dpr });
@@ -164,7 +189,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ material, onBack, subjectI
       canvas.width = viewport.width;
       canvas.height = viewport.height;
       
-      // ضبط الأبعاد الأساسية للعرض
       canvas.style.width = `${viewport.width / dpr}px`;
       canvas.style.height = `${viewport.height / dpr}px`;
       canvas.style.transform = `scale(${scale / renderScale})`;
@@ -187,38 +211,24 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ material, onBack, subjectI
   }, [pdfDoc, scale]);
 
   useEffect(() => {
-    if (pdfDoc) {
-      renderPage(currentPage);
-    }
-    return () => {
-        // Cleanup active task on unmount or deps change
-        if (renderTaskRef.current) {
-            renderTaskRef.current.cancel();
-        }
-    };
+    if (pdfDoc) renderPage(currentPage);
+    return () => { if (renderTaskRef.current) renderTaskRef.current.cancel(); };
   }, [currentPage, renderPage, pdfDoc]);
 
-  // --- Pinch Zoom Logic ---
+  // --- Pinch Zoom Logic (Same as before) ---
   const handleTouchStart = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
-      const dist = Math.hypot(
-        e.touches[0].pageX - e.touches[1].pageX,
-        e.touches[0].pageY - e.touches[1].pageY
-      );
+      const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
       touchStartDist.current = dist;
     }
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
     if (e.touches.length === 2) {
-      const dist = Math.hypot(
-        e.touches[0].pageX - e.touches[1].pageX,
-        e.touches[0].pageY - e.touches[1].pageY
-      );
+      const dist = Math.hypot(e.touches[0].pageX - e.touches[1].pageX, e.touches[0].pageY - e.touches[1].pageY);
       const delta = dist / touchStartDist.current;
       let newScale = currentScaleRef.current * delta;
       newScale = Math.min(Math.max(newScale, 0.5), 4.0);
-      
       if (canvasRef.current) {
          const renderScale = scale < 1.5 ? 1.5 : scale;
          canvasRef.current.style.transform = `scale(${newScale / renderScale})`;
@@ -229,9 +239,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ material, onBack, subjectI
   };
 
   const handleTouchEnd = () => {
-    if (Math.abs(currentScaleRef.current - scale) > 0.1) {
-        setScale(currentScaleRef.current);
-    }
+    if (Math.abs(currentScaleRef.current - scale) > 0.1) setScale(currentScaleRef.current);
   };
 
   const handleSave = () => {
@@ -242,42 +250,23 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ material, onBack, subjectI
     setTimeout(() => setShowSaveConfirm(false), 2000);
   };
 
-  // وظيفة التقاط الشاشة المحسنة
   const handleScreenshot = async () => {
       if (canvasRef.current) {
           setIsScanning(true);
-          // 1. استخدام JPEG بدلاً من PNG لتقليل الحجم
-          // 2. تقليل الجودة إلى 0.6 (كافية جداً للقراءة للذكاء الاصطناعي)
-          // هذا يمنع "تعليق" المتصفح بسبب حجم Base64 الكبير
           setTimeout(() => {
               try {
                   const imageData = canvasRef.current!.toDataURL('image/jpeg', 0.6);
                   onScanPage(imageData);
-              } catch (e) {
-                  console.error("Screenshot failed", e);
-              } finally {
-                  setIsScanning(false);
-              }
+              } catch (e) { console.error("Screenshot failed", e); } finally { setIsScanning(false); }
           }, 50);
       }
   };
 
-  // دوال التحكم بالتكبير اليدوي
-  const handleZoomIn = () => {
-    const newScale = Math.min(scale + 0.25, 3.0);
-    setScale(newScale);
-    currentScaleRef.current = newScale;
-  };
-
-  const handleZoomOut = () => {
-    const newScale = Math.max(scale - 0.25, 0.5);
-    setScale(newScale);
-    currentScaleRef.current = newScale;
-  };
+  const handleZoomIn = () => { const s = Math.min(scale + 0.25, 3.0); setScale(s); currentScaleRef.current = s; };
+  const handleZoomOut = () => { const s = Math.max(scale - 0.25, 0.5); setScale(s); currentScaleRef.current = s; };
 
   return (
     <div className="fixed inset-0 z-[60] flex flex-col bg-slate-100 dark:bg-slate-950">
-      {/* Header */}
       <div className="flex items-center justify-between p-3 bg-white/90 dark:bg-slate-900/90 border-b dark:border-slate-800 safe-top backdrop-blur-md">
         <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors">
           <ArrowLeft size={24} className="rtl:rotate-180" />
@@ -291,7 +280,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ material, onBack, subjectI
         </button>
       </div>
 
-      {/* Content Area */}
       <div 
         ref={containerRef}
         className="flex-1 overflow-auto relative p-4 flex justify-center items-start no-scrollbar touch-pan-x touch-pan-y"
@@ -318,7 +306,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ material, onBack, subjectI
         )}
       </div>
 
-      {/* Floating Action Button for AI Scan */}
       {!loading && !error && (
           <button 
              onClick={handleScreenshot}
@@ -330,40 +317,16 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ material, onBack, subjectI
           </button>
       )}
 
-      {/* Footer Controls */}
       <div className="bg-white/95 dark:bg-slate-900/95 border-t dark:border-slate-800 safe-bottom backdrop-blur-md">
-        
-        {/* Zoom Controls */}
         <div className="flex items-center justify-center gap-6 py-2 border-b border-gray-100 dark:border-slate-800">
-             <button onClick={handleZoomOut} className="p-2 text-slate-500 active:scale-95 transition-transform bg-gray-100 dark:bg-slate-800 rounded-full">
-                <ZoomOut size={18} />
-             </button>
-             <span className="text-[10px] font-black text-slate-400 min-w-[3rem] text-center">
-                 {Math.round(scale * 100)}%
-             </span>
-             <button onClick={handleZoomIn} className="p-2 text-slate-500 active:scale-95 transition-transform bg-gray-100 dark:bg-slate-800 rounded-full">
-                <ZoomIn size={18} />
-             </button>
+             <button onClick={handleZoomOut} className="p-2 text-slate-500 active:scale-95 transition-transform bg-gray-100 dark:bg-slate-800 rounded-full"><ZoomOut size={18} /></button>
+             <span className="text-[10px] font-black text-slate-400 min-w-[3rem] text-center">{Math.round(scale * 100)}%</span>
+             <button onClick={handleZoomIn} className="p-2 text-slate-500 active:scale-95 transition-transform bg-gray-100 dark:bg-slate-800 rounded-full"><ZoomIn size={18} /></button>
         </div>
-
-        {/* Page Navigation */}
         <div className="p-3">
             <div className="flex items-center justify-between max-w-md mx-auto gap-4">
-            <button 
-                onClick={() => setCurrentPage(p => Math.max(1, p - 1))} 
-                disabled={currentPage === 1}
-                className="flex-1 py-3 bg-gray-100 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl font-black text-xs disabled:opacity-30 active:scale-95 transition-transform"
-            >
-                السابقة
-            </button>
-            
-            <button 
-                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} 
-                disabled={currentPage === totalPages}
-                className="flex-1 py-3 bg-primary-600 text-white rounded-xl font-black text-xs disabled:opacity-30 shadow-lg shadow-primary-600/20 active:scale-95 transition-transform"
-            >
-                التالية
-            </button>
+            <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1} className="flex-1 py-3 bg-gray-100 dark:bg-slate-800 text-slate-900 dark:text-white rounded-xl font-black text-xs disabled:opacity-30 active:scale-95 transition-transform">السابقة</button>
+            <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages} className="flex-1 py-3 bg-primary-600 text-white rounded-xl font-black text-xs disabled:opacity-30 shadow-lg shadow-primary-600/20 active:scale-95 transition-transform">التالية</button>
             </div>
         </div>
       </div>
