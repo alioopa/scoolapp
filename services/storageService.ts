@@ -4,7 +4,7 @@ import { SUBJECTS as DEFAULT_SUBJECTS } from '../constants';
 const BOOKMARKS_KEY = 'haqiba_bookmarks';
 const THEME_KEY = 'haqiba_theme';
 const CUSTOM_MATERIALS_KEY = 'haqiba_custom_materials';
-const HIDDEN_MATERIALS_KEY = 'haqiba_hidden_materials'; // مفتاح جديد للمواد المحذوفة (المخفية)
+const HIDDEN_MATERIALS_KEY = 'haqiba_hidden_materials'; 
 const CONFIG_KEY = 'haqiba_config';
 
 // --- Bookmarks Logic ---
@@ -98,21 +98,16 @@ export const saveCustomMaterial = (subjectId: string, material: Material) => {
 export const deleteCustomMaterial = (subjectId: string, materialId: string) => {
     const custom = getCustomMaterials();
     let found = false;
-
-    // محاولة الحذف من القسم المحدد
     if (custom[subjectId]) {
         const initialLen = custom[subjectId].length;
         custom[subjectId] = custom[subjectId].filter(m => m.id !== materialId);
         if (custom[subjectId].length !== initialLen) found = true;
     }
-
-    // بحث شامل في حال لم يتم العثور عليها في القسم المحدد (للتأكد)
     if (!found) {
         Object.keys(custom).forEach(key => {
             custom[key] = custom[key].filter(m => m.id !== materialId);
         });
     }
-    
     localStorage.setItem(CUSTOM_MATERIALS_KEY, JSON.stringify(custom));
 }
 
@@ -131,10 +126,10 @@ export const getAppConfig = (): AppConfig => {
         if (data) return JSON.parse(data);
     } catch (e) {}
     
-    // Default Config
+    // Default Config Updated with User's Channel
     return {
         requiredChannels: [
-            { id: "@iq_3rd", name: "قناة الثالث متوسط الرسمية", url: "https://t.me/" }
+            { id: "my_channel", name: "قناة الثالث متوسط الرسمية", url: "https://t.me/Tleker" }
         ],
         adminIds: [123456],
         isMaintenance: false
@@ -145,16 +140,13 @@ export const saveAppConfig = (config: AppConfig) => {
     localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
 };
 
-// يدمج المواد الأساسية مع المخصصة ويستبعد المواد المحذوفة (المخفية)
 export const getAllSubjects = (): Subject[] => {
     const custom = getCustomMaterials();
     const hidden = getHiddenMaterials();
 
     return DEFAULT_SUBJECTS.map(sub => {
         const customForSub = custom[sub.id] || [];
-        // دمج كل المواد أولاً
         const allMaterials = [...sub.materials, ...customForSub];
-        // فلترة المواد المخفية
         const visibleMaterials = allMaterials.filter(m => !hidden.includes(m.id));
 
         return {

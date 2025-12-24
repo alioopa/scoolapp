@@ -25,21 +25,14 @@ export const AIChat: React.FC<AIChatProps> = ({ subjectName, isOpen, onClose, in
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    // التعامل مع لوحة المفاتيح في الموبايل بشكل دقيق
     if (!window.visualViewport) return;
-    
     const handleResize = () => {
-        // تحديث الارتفاع ليتناسب مع المساحة المرئية فقط (فوق الكيبورد)
         setViewportHeight(`${window.visualViewport!.height}px`);
         scrollToBottom();
     };
-
     window.visualViewport.addEventListener('resize', handleResize);
     window.visualViewport.addEventListener('scroll', handleResize);
-    
-    // ضبط الارتفاع الأولي
     setViewportHeight(`${window.visualViewport.height}px`);
-    
     return () => {
         window.visualViewport!.removeEventListener('resize', handleResize);
         window.visualViewport!.removeEventListener('scroll', handleResize);
@@ -110,7 +103,6 @@ export const AIChat: React.FC<AIChatProps> = ({ subjectName, isOpen, onClose, in
         className="fixed top-0 left-0 w-full bg-white dark:bg-slate-900 z-[200] flex flex-col animate-in slide-in-from-bottom-full duration-300"
         style={{ height: viewportHeight, maxHeight: '-webkit-fill-available' }}
     >
-      {/* Header */}
       <div className="flex items-center justify-between p-4 border-b dark:border-slate-800 bg-slate-900 text-white shadow-xl shrink-0 z-20" style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-indigo-600 rounded-2xl flex items-center justify-center shadow-lg"><Zap size={20} /></div>
@@ -122,7 +114,6 @@ export const AIChat: React.FC<AIChatProps> = ({ subjectName, isOpen, onClose, in
         <button onClick={onClose} className="p-2 bg-white/10 rounded-xl hover:bg-white/20 transition-colors"><X size={20} /></button>
       </div>
 
-      {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-5 space-y-8 bg-gray-50 dark:bg-slate-950 no-scrollbar w-full relative z-10">
         {messages.map((msg) => (
           <div key={msg.id} className={`flex w-full flex-col ${msg.role === 'user' ? 'items-start' : 'items-end'}`}>
@@ -150,7 +141,6 @@ export const AIChat: React.FC<AIChatProps> = ({ subjectName, isOpen, onClose, in
         <div ref={messagesEndRef} className="h-4" />
       </div>
 
-      {/* Input Area */}
       <div 
         className="p-3 bg-white dark:bg-slate-900 border-t dark:border-slate-800 shrink-0 z-20 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]"
         style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
@@ -158,12 +148,7 @@ export const AIChat: React.FC<AIChatProps> = ({ subjectName, isOpen, onClose, in
         {activeImage && (
             <div className="mb-2 relative inline-block animate-in zoom-in duration-200">
                 <img src={activeImage} alt="Snapshot" className="h-24 rounded-xl border-2 border-indigo-500 shadow-md object-cover" />
-                <button 
-                    onClick={() => setActiveImage(null)}
-                    className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 shadow-sm hover:bg-red-600"
-                >
-                    <X size={14} />
-                </button>
+                <button onClick={() => setActiveImage(null)} className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1.5 shadow-sm hover:bg-red-600"><X size={14} /></button>
             </div>
         )}
 
