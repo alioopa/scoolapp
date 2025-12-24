@@ -1,45 +1,77 @@
 import { Telegraf, Markup } from 'telegraf';
 
-// هذا الملف مخصص للعمل على Vercel كـ Serverless Function
-// Vercel يبحث تلقائياً في مجلد /api
-
-// ⚠️ تأكد من إضافة BOT_TOKEN في إعدادات Environment Variables في Vercel
+// ⚠️ تأكد من إضافة المتغيرات في إعدادات Vercel
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const WEB_APP_URL = process.env.WEB_APP_URL || 'https://scoolapp.vercel.app';
+const CHANNEL_USERNAME = '@Tleker';
+const CHANNEL_URL = 'https://t.me/Tleker';
 
 if (!BOT_TOKEN) {
-  throw new Error('BOT_TOKEN is not set in environment variables');
+  throw new Error('BOT_TOKEN is not set');
 }
 
 const bot = new Telegraf(BOT_TOKEN);
 
-// إعداد رسالة الترحيب
-bot.start((ctx) => {
-  const userName = ctx.from?.first_name || 'يا بطل';
-  
-  ctx.reply(
-      `أهلاً بك ${userName} في حقيبة الثالث متوسط! 🎒\n\n` +
-      `📚 هنا ستجد كل ما تحتاجه من كتب، ملازم، وملخصات.\n` +
-      `🤖 مع مساعد ذكي للإجابة على أسئلتك.\n\n` +
-      `👇 اضغط بالأسفل لفتح الحقيبة:`,
-      Markup.inlineKeyboard([
-          Markup.button.webApp('🚀 فتح الحقيبة المدرسية', WEB_APP_URL)
-      ])
-  );
+const checkSubscription = async (ctx: any, userId: number) => {
+    try {
+        const member = await ctx.telegram.getChatMember(CHANNEL_USERNAME, userId);
+        return ['creator', 'administrator', 'member', 'restricted'].includes(member.status);
+    } catch (e) {
+        console.log("Check sub error (make sure bot is admin):", e);
+        return false;
+    }
+};
+
+bot.start(async (ctx) => {
+    const userId = ctx.from.id;
+    const isSubscribed = await checkSubscription(ctx, userId);
+
+    if (!isSubscribed) {
+        return ctx.reply(
+            `⚠️ عذراً، يجب عليك الاشتراك في القناة الرسمية لاستخدام التطبيق.\n👇`,
+            Markup.inlineKeyboard([
+                [Markup.button.url('📢 اشتراك في القناة', CHANNEL_URL)],
+                [Markup.button.callback('✅ تم الاشتراك', 'check_sub')]
+            ])
+        );
+    }
+
+    ctx.reply(
+        `أهلاً بك في حقيبة الثالث متوسط! 🎒\nاضغط لفتح التطبيق 👇`,
+        Markup.inlineKeyboard([
+            Markup.button.webApp('🚀 فتح الحقيبة', WEB_APP_URL)
+        ])
+    );
 });
 
-// هذا هو الجزء الذي يتعامل مع طلبات الويب (Webhook)
+bot.action('check_sub', async (ctx) => {
+    const userId = ctx.from?.id;
+    if(!userId) return;
+    
+    const isSubscribed = await checkSubscription(ctx, userId);
+    if (isSubscribed) {
+        await ctx.deleteMessage();
+        await ctx.reply(
+            `✅ تم التحقق!`,
+            Markup.inlineKeyboard([
+                Markup.button.webApp('🚀 فتح الحقيبة', WEB_APP_URL)
+            ])
+        );
+    } else {
+        await ctx.answerCbQuery('❌ لم تشترك بعد!', { show_alert: true });
+    }
+});
+
 export default async function handler(request: any, response: any) {
     try {
-        // التحقق من أن الطلب وصل من تيليجرام
         if (request.body && request.body.update_id) {
             await bot.handleUpdate(request.body);
             response.status(200).json({ ok: true });
         } else {
-            response.status(200).json({ message: "Bot is active! Set webhook to this URL." });
+            response.status(200).json({ message: "Bot active" });
         }
     } catch (e: any) {
-        console.error("Bot Error:", e);
+        console.error("Error:", e);
         response.status(500).json({ error: e.message });
     }
 }

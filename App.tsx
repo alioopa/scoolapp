@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { HashRouter as Router, Routes, Route, useParams, useNavigate } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, useNavigate, useParams } from 'react-router-dom';
 import { 
   Book, FileText, ChevronLeft, Bot, BrainCircuit, 
   Trophy, PlayCircle, Home as HomeIcon, Brain, Key,
@@ -12,7 +12,7 @@ import { AIChat } from './components/AIChat';
 import { SettingsPage } from './components/SettingsPage';
 import { AdminPanel } from './components/AdminPanel';
 import { getAllSubjects as getStaticSubjects } from './services/storageService';
-import { fetchCustomMaterials } from './services/firebaseService';
+import { fetchCustomMaterials, trackUserLogin } from './services/firebaseService';
 import { generateQuiz, requestApiKey } from './services/geminiService';
 import { QuizState, Subject } from './types';
 
@@ -334,6 +334,8 @@ const AIConversationPage = () => {
 export default function App() {
   useEffect(() => {
     initTelegram();
+    const user = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    if (user) trackUserLogin(user);
   }, []);
 
   return (
