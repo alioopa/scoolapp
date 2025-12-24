@@ -118,7 +118,7 @@ export const SettingsPage = () => {
                     <MessagesSquare className="mx-auto mb-3 text-indigo-200" size={32} />
                     <h3 className="font-black text-lg mb-1">تواصل مع الدعم</h3>
                     <p className="text-indigo-200 text-xs font-bold mb-4">واجهت مشكلة؟ احنا موجودين للمساعدة</p>
-                    <a href="https://t.me/ExampleSupport" target="_blank" className="inline-flex items-center gap-2 bg-white text-indigo-600 px-6 py-3 rounded-2xl font-black text-xs hover:bg-indigo-50 transition-colors">
+                    <a href="https://t.me/Tlakera" target="_blank" className="inline-flex items-center gap-2 bg-white text-indigo-600 px-6 py-3 rounded-2xl font-black text-xs hover:bg-indigo-50 transition-colors">
                         <Mail size={14} />
                         مراسلة المطور
                     </a>
@@ -219,7 +219,7 @@ export const SettingsPage = () => {
                 </div>
 
                 <div className="pt-6 flex flex-col items-center gap-4">
-                    <a href="https://t.me/example" target="_blank" className="flex items-center gap-2 text-primary-600 dark:text-primary-400 text-xs font-black bg-primary-50 dark:bg-primary-900/20 px-4 py-2 rounded-xl">
+                    <a href="https://t.me/Tlakera" target="_blank" className="flex items-center gap-2 text-primary-600 dark:text-primary-400 text-xs font-black bg-primary-50 dark:bg-primary-900/20 px-4 py-2 rounded-xl">
                         <ExternalLink size={14} />
                         انضم لقناتنا الرسمية
                     </a>
